@@ -17,17 +17,19 @@
 | 退化模式 | 错误示例 | 正确写法 |
 |---------|---------|---------|
 | 主语后插逗号 | `裴砚，说` `钢哥，点了点头` | `裴砚说` `钢哥点了点头` |
+| 英文名后插逗号 | `Karen，坐在` `David，说` | `Karen坐在` `David说` |
 | 句子碎片化 | `也可能，是，老挝当地的，警察。` | `也可能是老挝当地的警察。` |
 | 对话标签僵硬 | `"明白。"钢哥，点了点头，"我，这就，去安排。"` | `"明白。"钢哥点头，"我这就去安排。"` |
 | 机械重复句式 | 连续多段都是 `他，的心跳，开始，加速。` | 句式要有变化，长短句交替 |
 | 段落过短过碎 | 每段只有 1-2 句话，且都是碎片句 | 段落长度要有变化 |
+| 空行密度过高 | 每段之间都有 2 个以上空行，一页没几行字 | 段落之间最多 1 个空行 |
 
 ### 核心工作流
 
 1. **任务拆解**：总字数目标 → 拆分为独立单元（如每集）→ 每个单元再拆分为批次（每批 ≤ 4000 字）
 2. **分批生成**：每批严格控制在 4000 中文字符以内，遵守自然语言节奏
-3. **每批质量检查**：6 项检查闸门，不通过则重写该批
-4. **合并与最终验证**：全量退化扫描 + 字数验证 + 时间线检查 + 通读修改
+3. **每批质量检查**：8 项检查闸门，不通过则重写该批
+4. **合并与最终验证**：全量退化扫描 + 字数验证 + 时间线检查 + 空行密度检查 + 通读修改
 
 ### 自动检测脚本
 
@@ -35,7 +37,7 @@
 python references/degradation_detector.py <你的文本文件.txt>
 ```
 
-检测 6 种退化模式 + 时间线递增验证，输出详细报告。
+检测 7 种退化模式（含空行密度、英文名主语逗号）+ 时间线递增验证，输出详细报告。
 
 ### 文件结构
 
@@ -49,15 +51,16 @@ long-form-writing-quality/
     └── before_after_cases.md         # 5 个 Before/After 对比案例
 ```
 
-### 准出条件（7 项必须全部通过）
+### 准出条件（8 项必须全部通过）
 
-1. ✅ 退化模式自动检测通过（0 个问题）
+1. ✅ 退化模式自动检测通过（0 个问题，含空行密度检测）
 2. ✅ 中文字符数达到目标
 3. ✅ 总字符数达到目标
 4. ✅ 时间线严格单调递增（0 个倒流）
-5. ✅ 全文通读至少一遍，不通顺处已修改
-6. ✅ 人物年龄、身份、性格与设定一致
-7. ✅ 所有补充场都放在对应场次下方
+5. ✅ 空行密度正常（段落之间最多 1 个空行，无连续空行注水）
+6. ✅ 全文通读至少一遍，不通顺处已修改
+7. ✅ 人物年龄、身份、性格与设定一致
+8. ✅ 所有补充场都放在对应场次下方
 
 ### 适用场景
 
@@ -77,18 +80,20 @@ Typical degradation patterns:
 
 | Degradation Pattern | Bad Example | Correct |
 |---------------------|-------------|---------|
-| Comma after subject | `Pei Yan, said` `Gang Ge, nodded` | `Pei Yan said` `Gang Ge nodded` |
+| Comma after Chinese subject | `Pei Yan, said` `Gang Ge, nodded` | `Pei Yan said` `Gang Ge nodded` |
+| Comma after English name | `Karen, sat` `David, said` | `Karen sat` `David said` |
 | Sentence fragmentation | `It might, be, the local, police.` | `It might be the local police.` |
 | Stiff dialogue tags | `"Understood." Gang Ge, nodded, "I, will, arrange it."` | `"Understood." Gang Ge nodded, "I'll arrange it."` |
 | Mechanical repetition | Consecutive paragraphs all start with `His, heart, started, racing.` | Vary sentence structure, mix long and short |
 | Atrophied paragraphs | Every paragraph is 1-2 fragmented sentences | Vary paragraph length |
+| Excessive empty lines | 2+ blank lines between every paragraph, sparse pages | Max 1 blank line between paragraphs |
 
 ### Core Workflow
 
 1. **Decompose**: Total word target → units (e.g., per episode) → batches (≤4000 chars each)
 2. **Batch generation**: Each batch ≤ 4000 Chinese characters, following natural language rhythm
-3. **Per-batch quality gate**: 6 checks; rewrite the batch if any fails
-4. **Merge & final verification**: Full degradation scan + word count + timeline check + read-through
+3. **Per-batch quality gate**: 8 checks; rewrite the batch if any fails
+4. **Merge & final verification**: Full degradation scan + word count + timeline check + empty-line density + read-through
 
 ### Auto-Detection Script
 
@@ -96,7 +101,7 @@ Typical degradation patterns:
 python references/degradation_detector.py <your_text_file.txt>
 ```
 
-Detects 6 degradation patterns + verifies monotonic timeline, outputs a detailed report.
+Detects 7 degradation patterns (including empty-line density, English-name subject commas) + verifies monotonic timeline, outputs a detailed report.
 
 ### File Structure
 
@@ -110,15 +115,16 @@ long-form-writing-quality/
     └── before_after_cases.md         # 5 Before/After comparison cases
 ```
 
-### Exit Criteria (all 7 must pass)
+### Exit Criteria (all 8 must pass)
 
-1. ✅ Degradation auto-detection passes (0 issues)
+1. ✅ Degradation auto-detection passes (0 issues, incl. empty-line density)
 2. ✅ Chinese character count meets target
 3. ✅ Total character count meets target
 4. ✅ Timeline strictly monotonic (0 reversals)
-5. ✅ Full read-through completed, awkward passages fixed
-6. ✅ Character age/identity/personality consistent with设定
-7. ✅ All supplementary scenes placed under their corresponding scene
+5. ✅ Empty-line density normal (max 1 blank line between paragraphs)
+6. ✅ Full read-through completed, awkward passages fixed
+7. ✅ Character age/identity/personality consistent with设定
+8. ✅ All supplementary scenes placed under their corresponding scene
 
 ### Use Cases
 
