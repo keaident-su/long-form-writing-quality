@@ -1,11 +1,11 @@
 ---
 name: long-form-writing-quality
-description: 长文本写作质量控制Skill。专门用于防止大模型在生成超长篇文本（小说、剧本、报告等，单篇超过5000字）时出现的"长文本退化"现象——包括碎片化断句、机械重复句式、不必要的逗号插入、对话僵硬、语言流畅度下降等问题。提供分批生成工作流、退化模式检测规则、质量检查闸门、字数验证方法、场次顺序验证和时间线验证。适用于所有需要生成超过5000字连续文本的创作任务，特别是多场次剧本创作。
+description: 长文本写作质量控制Skill。专门用于防止大模型在生成超长篇文本（小说、剧本、报告等，单篇超过5000字）时出现的"长文本退化"现象——包括碎片化断句、机械重复句式、不必要的逗号插入、对话僵硬、语言流畅度下降等问题。提供分批生成工作流、退化模式检测规则、质量检查闸门、字数验证方法、场次顺序验证、时间线验证和剧情逻辑连贯性检测。适用于所有需要生成超过5000字连续文本的创作任务，特别是多场次剧本创作。
 ---
 
 # 长文本写作质量控制 Skill
 
-版本：2.0.0
+版本：3.0.0
 
 ## 核心问题
 
@@ -34,6 +34,18 @@ description: 长文本写作质量控制Skill。专门用于防止大模型在�
 | **补充场次时间戳超出对应主场次时间范围** | 第55场补充场时间是9月6日，而第56场是9月5日 | 补充场次时间必须在对应主场次之后、下一个主场次之前 |
 | **主场次时间戳倒流** | 第1场是4月5日，第2场是4月7日，第3场是4月6日 | 所有场次时间戳必须严格单调递增 |
 
+### 剧情逻辑错乱（剧本专用，绝对禁止，v3.0.0新增）
+
+| 错误模式 | 错误示例 | 正确做法 |
+|---------|---------|---------|
+| **人物在事件发生前就出现在目的地** | 第96场（8月3日）老K已在曼谷见王子，但第98场（8月5日）车队才从泰缅边境出发 | 必须解释人物如何提前到达（如乘私人飞机先去），或调整时间线 |
+| **不同人物使用相同名字** | 第95场中国驻泰国大使叫"王建国"，第95场补充场公安部国际合作局局长也叫"王建国" | 不同人物必须使用不同的名字，避免混淆 |
+| **主场次与补充场内容严重重复** | 第116场和第116场补充场都是公司账目处理，内容几乎完全一样 | 补充场必须提供与主场次不同的内容、视角或情节 |
+| **主场次与补充场情节矛盾** | 第101场说定位器在车机系统主机里面，第101场补充场说定位器在汽车底盘下面 | 同一事件的细节必须保持一致，不能前后矛盾 |
+| **"第一次"类情节前后不一致** | 第100场说7月28日在缅甸第一次开车，第98场说8月5日第一次开车 | "第一次"类情节必须前后一致，明确区分不同场景的"第一次" |
+| **星期几错误** | 2027年8月5日说是星期三（实际是星期四） | 必须根据日期自动计算正确的星期几 |
+| **相邻场次情节相似度太高** | 第107场和第109场都是堵车+主角私自离队买东西+车队走了+安保人员留下等他 | 相邻场次必须有不同的情节和冲突，不能重复使用相同的桥段 |
+
 ### 退化的根本原因
 
 1. 单次生成太长，模型注意力被稀释
@@ -43,6 +55,8 @@ description: 长文本写作质量控制Skill。专门用于防止大模型在�
 5. 缺少对自然语言节奏的感知——中文不是每两个字就要停顿一次，段落之间也不是每段都要空两行
 6. 合并时按文件名排序而非按场次编号排序，导致场次顺序错乱
 7. 补充场次时间戳设置不合理，导致时间线倒流
+8. 分批生成时缺少全局剧情一致性检查，导致人物名字冲突、情节矛盾、内容重复等问题
+9. 缺少星期几自动校验机制，导致大量星期几错误
 
 ## 工作流（必须严格遵守）
 
@@ -55,6 +69,8 @@ description: 长文本写作质量控制Skill。专门用于防止大模型在�
 3. **每个单元再拆分为批次**（每批不超过4000字，约2-3场戏）
 4. **建立批次清单**，明确每批的内容范围、时间线、出场人物、场次编号
 5. **建立全局场次编号表**，明确所有主场次和补充场次的编号、时间戳、对应关系
+6. **建立全局人物表**（v3.0.0新增），明确所有人物的姓名、身份、年龄、性格特征，确保不同人物不使用相同名字
+7. **建立全局剧情一致性检查表**（v3.0.0新增），记录关键情节节点（如"第一次开车"、"定位器位置"等），确保前后一致
 
 ### 第二步：分批生成
 
@@ -68,6 +84,10 @@ description: 长文本写作质量控制Skill。专门用于防止大模型在�
 6. **禁止注水**：不要为了凑字数而重复描写、用碎片句填充。每一句话都应该有信息增量。不要为了凑页数而插入大量空行。
 7. **场次编号连续**：每批生成的场次编号必须与全局场次编号表一致，不得跳号、重号。
 8. **时间戳严格递增**：每批生成的场次时间戳必须严格递增，不得倒流。补充场次时间戳必须在对应主场次之后、下一个主场次之前。
+9. **人物名字一致性**（v3.0.0新增）：每批生成的人物名字必须与全局人物表一致，不得擅自更改人物名字，不同人物不得使用相同名字。
+10. **剧情一致性**（v3.0.0新增）：每批生成的情节必须与全局剧情一致性检查表一致，关键情节节点不得前后矛盾，"第一次"类情节必须明确区分场景。
+11. **星期几正确性**（v3.0.0新增）：每批生成的星期几必须与日期对应，必须使用工具计算正确的星期几，不得凭印象填写。
+12. **补充场内容独特性**（v3.0.0新增）：补充场次必须提供与主场次不同的内容、视角或情节，不得简单重复主场次的内容。
 
 ### 第三步：每批质量检查（闸门）
 
@@ -85,6 +105,10 @@ description: 长文本写作质量控制Skill。专门用于防止大模型在�
 - [ ] **场次编号检查**：本场的场次编号是否与全局场次编号表一致，有没有跳号、重号
 - [ ] **补充场次位置检查**：补充场次是否放在了对应主场次的下方
 - [ ] **人物一致性检查**：人物的年龄、身份、性格是否与设定一致
+- [ ] **人物名字冲突检查**（v3.0.0新增）：本场人物名字是否与全局人物表一致，有没有不同人物使用相同名字
+- [ ] **剧情一致性检查**（v3.0.0新增）：本场情节是否与全局剧情一致性检查表一致，有没有前后矛盾
+- [ ] **星期几检查**（v3.0.0新增）：本场的星期几是否与日期对应正确
+- [ ] **补充场内容独特性检查**（v3.0.0新增）：补充场次内容是否与主场次不同，有没有简单重复
 
 **如果任何一项不通过，必须重写该批，不能带着问题继续。**
 
@@ -97,7 +121,8 @@ description: 长文本写作质量控制Skill。专门用于防止大模型在�
 3. **场次顺序验证**（所有主场次按编号递增，补充场次在对应主场次下方）
 4. **字数验证**（中文字符数必须达到目标）
 5. **时间线全量检查**（所有场次的时间戳严格单调递增）
-6. **通读流畅度检查**（至少通读全文一遍，标记不通顺的地方并修改）
+6. **剧情逻辑全量检查**（v3.0.0新增，用脚本检测，见下方）
+7. **通读流畅度检查**（至少通读全文一遍，标记不通顺的地方并修改）
 
 ## 标准合并脚本（剧本专用，必须使用）
 
@@ -111,15 +136,9 @@ def merge_scenes(files_dir, output_path, file_prefixes=['act_part', 'act_supplem
     """
     标准剧本合并脚本
     按场次编号排序，补充场次放在对应主场次下方
-    
-    参数：
-        files_dir: 分片文件所在目录
-        output_path: 输出文件路径
-        file_prefixes: 要合并的文件前缀列表
     """
     all_files = []
     
-    # 读取所有分片文件
     for filename in os.listdir(files_dir):
         for prefix in file_prefixes:
             if filename.startswith(prefix) and filename.endswith('.txt'):
@@ -131,7 +150,6 @@ def merge_scenes(files_dir, output_path, file_prefixes=['act_part', 'act_supplem
     
     print(f"读取了 {len(all_files)} 个文件")
     
-    # 解析每个文件中的场次
     all_scenes = []
     
     for filename, content in all_files:
@@ -145,13 +163,10 @@ def merge_scenes(files_dir, output_path, file_prefixes=['act_part', 'act_supplem
         for line in lines:
             stripped = line.strip()
             
-            # 检测主场次标题（如"第55场"）
             main_scene_match = re.match(r'^第(\d+)场$', stripped)
-            # 检测补充场标题（如"第55场补充场（一）"）
             supplement_match = re.match(r'^第(\d+)场补充场（([一二三四五六七八九十]+)）', stripped)
             
             if main_scene_match and not supplement_match:
-                # 保存上一个场次
                 if current_scene_title:
                     all_scenes.append({
                         'title': current_scene_title,
@@ -168,7 +183,6 @@ def merge_scenes(files_dir, output_path, file_prefixes=['act_part', 'act_supplem
                 current_scene_lines = [line]
             
             elif supplement_match:
-                # 保存上一个场次
                 if current_scene_title:
                     all_scenes.append({
                         'title': current_scene_title,
@@ -181,7 +195,6 @@ def merge_scenes(files_dir, output_path, file_prefixes=['act_part', 'act_supplem
                 current_scene_title = stripped
                 current_scene_number = int(supplement_match.group(1))
                 current_is_supplement = True
-                # 将中文数字转换为排序值
                 cn_num = supplement_match.group(2)
                 cn_map = {'一': 1, '二': 2, '三': 3, '四': 4, '五': 5, 
                           '六': 6, '七': 7, '八': 8, '九': 9, '十': 10}
@@ -191,7 +204,6 @@ def merge_scenes(files_dir, output_path, file_prefixes=['act_part', 'act_supplem
             else:
                 current_scene_lines.append(line)
         
-        # 保存最后一个场次
         if current_scene_title:
             all_scenes.append({
                 'title': current_scene_title,
@@ -203,7 +215,6 @@ def merge_scenes(files_dir, output_path, file_prefixes=['act_part', 'act_supplem
     
     print(f"解析出 {len(all_scenes)} 个场次")
     
-    # 按场次编号排序，主场次在前，补充场次在后（按补充场顺序）
     def sort_key(scene):
         if scene['is_supplement']:
             return (scene['number'], 1, scene['supplement_order'])
@@ -212,27 +223,21 @@ def merge_scenes(files_dir, output_path, file_prefixes=['act_part', 'act_supplem
     
     all_scenes.sort(key=sort_key)
     
-    # 打印排序后的场次顺序
     print("\n排序后的场次顺序：")
     for i, scene in enumerate(all_scenes):
         print(f"  {i+1:3d}. {scene['title']}")
     
-    # 合并所有场次
     merged_content = ""
     for scene in all_scenes:
         merged_content += scene['content']
         merged_content += "\n\n"
     
-    # 保存合并后的文本
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(merged_content)
     
     print(f"\n合并后的文本已保存到: {output_path}")
     
     return merged_content
-
-# 使用方法
-# merge_scenes('你的分片文件目录', '输出文件路径', ['act2_part', 'act2_supplement'])
 ```
 
 ## 退化模式自动检测脚本
@@ -246,13 +251,11 @@ def detect_degradation(text):
     """检测长文本退化模式，返回问题列表"""
     issues = []
     
-    # 模式1：主语+逗号+单字动词（如"裴砚，说""钢哥，点头"）
     pattern1 = re.compile(r'[\u4e00-\u9fff]{1,4}，[\u4e00-\u9fff]{1,2}[。，！？]')
     matches1 = pattern1.findall(text)
     if matches1:
         issues.append(f"发现{len(matches1)}处'主语，动词'碎片化断句，示例：{matches1[:5]}")
     
-    # 模式2：一句话中超过4个逗号（碎片句）
     lines = text.split('\n')
     fragment_lines = []
     for i, line in enumerate(lines):
@@ -261,13 +264,11 @@ def detect_degradation(text):
     if fragment_lines:
         issues.append(f"发现{len(fragment_lines)}处碎片句（逗号过多且句子过短），示例：{fragment_lines[:3]}")
     
-    # 模式3：对话标签中的逗号（如"XX，说："）
     pattern3 = re.compile(r'[""][\u4e00-\u9fff]{1,4}，[说道问回答喊叫][：，]')
     matches3 = pattern3.findall(text)
     if matches3:
         issues.append(f"发现{len(matches3)}处对话标签逗号错误，示例：{matches3[:5]}")
     
-    # 模式4：连续相同句式开头
     sentences = re.split(r'[。！？]', text)
     repeated_starts = []
     for i in range(len(sentences)-5):
@@ -277,7 +278,6 @@ def detect_degradation(text):
     if repeated_starts:
         issues.append(f"发现{len(repeated_starts)}处连续相同句式开头，示例位置：{repeated_starts[:3]}")
     
-    # 模式5：连续空行（超过2个）
     max_consecutive_empty = 0
     current_empty = 0
     for line in lines:
@@ -298,13 +298,9 @@ def detect_degradation(text):
 import re
 
 def verify_scene_order_and_timeline(text):
-    """
-    验证场次顺序和时间线
-    返回问题列表
-    """
+    """验证场次顺序和时间线，返回问题列表"""
     issues = []
     
-    # 解析所有场次
     lines = text.split('\n')
     scenes = []
     current_scene = None
@@ -313,9 +309,7 @@ def verify_scene_order_and_timeline(text):
     for line in lines:
         stripped = line.strip()
         
-        # 检测主场次标题
         main_scene_match = re.match(r'^第(\d+)场$', stripped)
-        # 检测补充场标题
         supplement_match = re.match(r'^第(\d+)场补充场（([一二三四五六七八九十]+)）', stripped)
         
         if main_scene_match and not supplement_match:
@@ -329,7 +323,6 @@ def verify_scene_order_and_timeline(text):
             current_scene = stripped
             current_time = None
         
-        # 检测时间戳
         time_match = re.match(r'^时间[：:]\s*(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2})[：:](\d{2})', stripped)
         if time_match:
             year, month, day, hour, minute = map(int, time_match.groups())
@@ -338,14 +331,6 @@ def verify_scene_order_and_timeline(text):
     if current_scene:
         scenes.append((current_scene, current_time))
     
-    # 验证场次编号顺序
-    scene_numbers = []
-    for scene, time in scenes:
-        match = re.match(r'^第(\d+)场', scene)
-        if match:
-            scene_numbers.append(int(match.group(1)))
-    
-    # 检查主场次编号是否递增
     main_scene_numbers = []
     for i, (scene, time) in enumerate(scenes):
         if '补充场' not in scene:
@@ -356,7 +341,6 @@ def verify_scene_order_and_timeline(text):
                     issues.append(f"主场次编号倒流：第{num}场在第{main_scene_numbers[-1]}场之后")
                 main_scene_numbers.append(num)
     
-    # 检查补充场次是否在对应主场次之后
     last_main_scene_num = None
     for i, (scene, time) in enumerate(scenes):
         if '补充场' in scene:
@@ -370,11 +354,231 @@ def verify_scene_order_and_timeline(text):
             if match:
                 last_main_scene_num = int(match.group(1))
     
-    # 验证时间线严格递增
     timestamps = [time for scene, time in scenes if time]
     for i in range(1, len(timestamps)):
         if timestamps[i] <= timestamps[i-1]:
             issues.append(f"时间线倒流：第{i+1}个时间戳{timestamps[i]}不大于前一个{timestamps[i-1]}")
+    
+    return issues
+```
+
+## 剧情逻辑连贯性检测脚本（剧本专用，v3.0.0新增，必须运行）
+
+```python
+import re
+import datetime
+from difflib import SequenceMatcher
+
+def verify_plot_logic(text):
+    """
+    验证剧情逻辑连贯性，返回问题列表
+    检测内容：人物名字冲突、星期几错误、主场次与补充场内容重复、相邻场次情节相似度
+    """
+    issues = []
+    
+    lines = text.split('\n')
+    
+    # ============================================
+    # 1. 解析所有场次
+    # ============================================
+    scenes = []
+    current_scene_title = None
+    current_scene_content = []
+    current_scene_time = None
+    current_is_supplement = False
+    
+    for line in lines:
+        stripped = line.strip()
+        
+        main_scene_match = re.match(r'^第(\d+)场$', stripped)
+        supplement_match = re.match(r'^第(\d+)场补充场（([一二三四五六七八九十]+)）', stripped)
+        
+        if main_scene_match and not supplement_match:
+            if current_scene_title:
+                scenes.append({
+                    'title': current_scene_title,
+                    'content': '\n'.join(current_scene_content),
+                    'time': current_scene_time,
+                    'is_supplement': current_is_supplement
+                })
+            current_scene_title = stripped
+            current_scene_content = [line]
+            current_scene_time = None
+            current_is_supplement = False
+        elif supplement_match:
+            if current_scene_title:
+                scenes.append({
+                    'title': current_scene_title,
+                    'content': '\n'.join(current_scene_content),
+                    'time': current_scene_time,
+                    'is_supplement': current_is_supplement
+                })
+            current_scene_title = stripped
+            current_scene_content = [line]
+            current_scene_time = None
+            current_is_supplement = True
+        else:
+            current_scene_content.append(line)
+            time_match = re.match(r'^时间[：:]\s*(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2})[：:](\d{2})', stripped)
+            if time_match:
+                year, month, day, hour, minute = map(int, time_match.groups())
+                current_scene_time = (year, month, day, hour, minute)
+    
+    if current_scene_title:
+        scenes.append({
+            'title': current_scene_title,
+            'content': '\n'.join(current_scene_content),
+            'time': current_scene_time,
+            'is_supplement': current_is_supplement
+        })
+    
+    # ============================================
+    # 2. 星期几自动校验
+    # ============================================
+    weekday_map = {
+        0: '星期一', 1: '星期二', 2: '星期三', 3: '星期四',
+        4: '星期五', 5: '星期六', 6: '星期日'
+    }
+    
+    cn_num_map = {
+        '一': 1, '二': 2, '三': 3, '四': 4, '五': 5,
+        '六': 6, '七': 7, '八': 8, '九': 9, '十': 10,
+        '十一': 11, '十二': 12, '十三': 13, '十四': 14, '十五': 15,
+        '十六': 16, '十七': 17, '十八': 18, '十九': 19, '二十': 20,
+        '二十一': 21, '二十二': 22, '二十三': 23, '二十四': 24, '二十五': 25,
+        '二十六': 26, '二十七': 27, '二十八': 28, '二十九': 29, '三十': 30,
+        '三十一': 31
+    }
+    
+    pattern = re.compile(r'([一二三四五六七八九十]+)月([一二三四五六七八九十]+)日[，,\s]+(星期[一二三四五六日天])')
+    matches = pattern.findall(text)
+    
+    weekday_errors = []
+    for match in matches:
+        month_cn, day_cn, old_weekday = match
+        month = cn_num_map.get(month_cn, 0)
+        day = cn_num_map.get(day_cn, 0)
+        
+        if month == 0 or day == 0:
+            continue
+        
+        try:
+            date = datetime.date(2027, month, day)
+            correct_weekday = weekday_map[date.weekday()]
+            
+            if old_weekday != correct_weekday:
+                weekday_errors.append(f"{month_cn}月{day_cn}日 {old_weekday} (正确: {correct_weekday})")
+        except ValueError:
+            pass
+    
+    if weekday_errors:
+        issues.append(f"发现 {len(weekday_errors)} 处星期几错误：")
+        for error in weekday_errors:
+            issues.append(f"  ✗ {error}")
+    else:
+        issues.append("✓ 所有星期几都正确")
+    
+    # ============================================
+    # 3. 主场次与补充场内容重复检测
+    # ============================================
+    supplement_duplicate_issues = []
+    
+    for i, scene in enumerate(scenes):
+        if scene['is_supplement']:
+            # 找到对应的主场次
+            supplement_num_match = re.match(r'^第(\d+)场补充场', scene['title'])
+            if supplement_num_match:
+                supplement_num = int(supplement_num_match.group(1))
+                # 找到对应的主场次
+                for j, main_scene in enumerate(scenes):
+                    if not main_scene['is_supplement']:
+                        main_num_match = re.match(r'^第(\d+)场', main_scene['title'])
+                        if main_num_match and int(main_num_match.group(1)) == supplement_num:
+                            # 计算相似度
+                            similarity = SequenceMatcher(None, main_scene['content'], scene['content']).ratio()
+                            if similarity > 0.6:
+                                supplement_duplicate_issues.append(
+                                    f"{main_scene['title']} 与 {scene['title']} 内容相似度高达 {similarity:.2%}，可能存在严重重复"
+                                )
+                            break
+    
+    if supplement_duplicate_issues:
+        issues.append(f"发现 {len(supplement_duplicate_issues)} 处主场次与补充场内容重复：")
+        for issue in supplement_duplicate_issues:
+            issues.append(f"  ✗ {issue}")
+    else:
+        issues.append("✓ 未发现主场次与补充场内容严重重复")
+    
+    # ============================================
+    # 4. 相邻场次情节相似度检测
+    # ============================================
+    adjacent_similarity_issues = []
+    
+    for i in range(len(scenes) - 1):
+        if not scenes[i]['is_supplement'] and not scenes[i+1]['is_supplement']:
+            # 只检查相邻的两个主场次
+            similarity = SequenceMatcher(None, scenes[i]['content'], scenes[i+1]['content']).ratio()
+            if similarity > 0.4:
+                adjacent_similarity_issues.append(
+                    f"{scenes[i]['title']} 与 {scenes[i+1]['title']} 内容相似度高达 {similarity:.2%}，可能存在情节重复"
+                )
+    
+    if adjacent_similarity_issues:
+        issues.append(f"发现 {len(adjacent_similarity_issues)} 处相邻场次情节相似度太高：")
+        for issue in adjacent_similarity_issues:
+            issues.append(f"  ✗ {issue}")
+    else:
+        issues.append("✓ 未发现相邻场次情节严重重复")
+    
+    # ============================================
+    # 5. 人物名字冲突检测（简单检测）
+    # ============================================
+    # 提取所有"XX说"的人物名字
+    name_pattern = re.compile(r'([\u4e00-\u9fff]{2,4})说[：:]')
+    all_names = name_pattern.findall(text)
+    
+    # 统计每个名字出现的场次
+    name_scenes = {}
+    for name in set(all_names):
+        name_scenes[name] = set()
+        for i, scene in enumerate(scenes):
+            if name in scene['content']:
+                name_scenes[name].add(i)
+    
+    # 检测是否有名字在不同的上下文中被用作不同的人物
+    # 这是一个简单的启发式检测，可能会有误报
+    name_conflict_issues = []
+    
+    # 检测常见的姓氏+名字组合是否在不同场次中被赋予不同的身份
+    # 这里只做简单的提示，需要人工确认
+    common_names = ['王建国', '李建国', '张建国', '刘建国', '陈建国']
+    for name in common_names:
+        if name in text:
+            # 检查这个名字出现的场次
+            name_scene_indices = [i for i, scene in enumerate(scenes) if name in scene['content']]
+            if len(name_scene_indices) > 1:
+                # 检查这些场次中这个名字的身份描述
+                identity_descriptions = []
+                for idx in name_scene_indices:
+                    scene = scenes[idx]
+                    # 查找名字附近的身份描述
+                    name_pos = scene['content'].find(name)
+                    if name_pos != -1:
+                        context = scene['content'][max(0, name_pos-50):name_pos+50]
+                        identity_descriptions.append(context)
+                
+                # 简单检查身份描述是否有明显差异
+                if len(set(identity_descriptions)) > 1:
+                    name_conflict_issues.append(
+                        f"名字 '{name}' 在多个场次中出现，且身份描述可能存在差异，请人工确认是否为同一人物"
+                    )
+    
+    if name_conflict_issues:
+        issues.append(f"发现 {len(name_conflict_issues)} 处可能的人物名字冲突：")
+        for issue in name_conflict_issues:
+            issues.append(f"  ⚠ {issue}")
+    else:
+        issues.append("✓ 未发现明显的人物名字冲突")
     
     return issues
 ```
@@ -420,6 +624,7 @@ def verify_scene_order_and_timeline(text):
 - 时间戳格式：`时间：YYYY年MM月DD日 HH:MM`（如"时间：2026年9月3日 08:00"）
 - 补充场次必须紧跟在对应主场次的下方
 - 补充场次时间戳必须在对应主场次之后、下一个主场次之前
+- 补充场次必须提供与主场次不同的内容、视角或情节，不得简单重复主场次内容（v3.0.0新增）
 
 ## 字数验证方法
 
@@ -442,6 +647,10 @@ def count_total_chars(text):
 
 见上方"场次顺序和时间线验证脚本"。
 
+## 剧情逻辑验证方法（v3.0.0新增）
+
+见上方"剧情逻辑连贯性检测脚本"。
+
 ## 准出条件
 
 在交付任何长文本作品前，必须同时满足以下所有条件：
@@ -456,6 +665,13 @@ def count_total_chars(text):
 8. ✅ 全文通读至少一遍，标记的不通顺处已全部修改
 9. ✅ 人物年龄、身份、性格与设定一致
 10. ✅ 使用标准合并脚本合并（禁止按文件名字典序排序）
+11. ✅ 剧情逻辑连贯性检测通过（v3.0.0新增）：
+    - 所有星期几都正确
+    - 未发现主场次与补充场内容严重重复
+    - 未发现相邻场次情节严重重复
+    - 未发现明显的人物名字冲突
+12. ✅ 全局人物表一致性检查通过（v3.0.0新增）：所有人物名字与全局人物表一致
+13. ✅ 全局剧情一致性检查表检查通过（v3.0.0新增）：关键情节节点前后一致，无矛盾
 
 **任何一项不通过，不得交付。**
 
@@ -482,3 +698,27 @@ A：补充场次的时间戳必须在对应主场次之后、下一个主场次�
 ### Q：如何避免场次编号跳号或重号？
 A：在任务拆解阶段，必须建立全局场次编号表，明确所有主场次和补充场次的编号、时间戳、对应关系。每批生成时，必须与全局场次编号表核对，确保编号连续、不跳号、不重号。
 
+### Q：如何避免人物名字冲突？（v3.0.0新增）
+A：在任务拆解阶段，必须建立全局人物表，明确所有人物的姓名、身份、年龄、性格特征。每批生成时，必须与全局人物表核对，确保不同人物不使用相同名字，同一人物的名字不随意更改。
+
+### Q：如何避免主场次与补充场内容重复？（v3.0.0新增）
+A：补充场次必须提供与主场次不同的内容、视角或情节。可以从以下角度设计补充场：
+1. 不同人物的视角（主场次写主角，补充场写配角）
+2. 同一事件的不同阶段（主场次写事件开始，补充场写事件后续）
+3. 平行发生的其他事件（主场次写主线，补充场写副线）
+4. 事件的背景或前因（主场次写结果，补充场写原因）
+5. 人物的内心活动或回忆（主场次写外部行动，补充场写内心世界）
+
+### Q：如何避免星期几错误？（v3.0.0新增）
+A：必须使用工具计算正确的星期几，不得凭印象填写。可以使用Python的datetime模块计算：
+```python
+import datetime
+date = datetime.date(2027, 8, 5)
+weekday = date.strftime('%A')  # 输出英文星期几
+# 或者手动映射
+weekday_map = {0: '星期一', 1: '星期二', 2: '星期三', 3: '星期四', 4: '星期五', 5: '星期六', 6: '星期日'}
+correct_weekday = weekday_map[date.weekday()]
+```
+
+### Q：如何检测"第一次"类情节前后不一致？（v3.0.0新增）
+A：在任务拆解阶段，必须建立全局剧情一致性检查表，记录所有关键情节节点（如"第一次开车"、"第一次见某人"、"第一次使用某设备"等）。每批生成时，必须与全局剧情一致性检查表核对，确保"第一次"类情节前后一致。如果需要在不同场景中使用"第一次"，必须明确区分场景（如"第一次在训练场试驾" vs "第一次在真实道路上驾驶"）。
