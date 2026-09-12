@@ -1,44 +1,56 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-长文本退化模式检测器 v1.1.0
-用于检测大模型生成超长篇文本时出现的碎片化断句、机械重复、空行注水等退化问题。
-用法: python degradation_detector.py <文件路径>
+长文本退化模式检测器 v4.2.0
+用于检测大模型生成超长篇文本时出现的碎片化断句、机械重复、空行注水、
+时间线错乱、年龄-生日不匹配、相对时间表述错误、年龄对比写反等退化问题。
+
+用法:
+  python degradation_detector.py <文件路径>
+  python degradation_detector.py <文件路径> --config <配置文件.json>
+
+配置文件格式（可选）:
+{
+  "characters": {
+    "徐萱": {"birth": "2016-04-08", "grade": "高三"},
+    "苏晚": {"birth": "2016-08-15", "grade": "高三"}
+  },
+  "key_events": {
+    "逃亡": "2026-07-01",
+    "回国": "2033-11-01",
+    "父母空难": "2026-01-15"
+  },
+  "classmates": ["苏晚", "郑好", "周鼎思"]
+}
 """
 
 import re
 import sys
+import json
+import os
 from collections import Counter
+from datetime import datetime, date
 
+
+# ============================================================
+# 基础退化模式检测
+# ============================================================
 
 def detect_subject_verb_comma(text):
-    """检测'主语，动词'碎片化断句模式（如'裴砚，说''钢哥，点头''Karen，坐在''林小满，坐在'）"""
+    """检测'主语，动词'碎片化断句模式"""
     issues = []
     lines = text.split('\n')
     for line_num, line in enumerate(lines, 1):
-        # 模式1：中文名（1-4汉字）+ 逗号 + 动词（1-2字）+ (标点 | 在/了/着/过/到/上/下/进/出)
         pattern_cn = re.compile(r'([\u4e00-\u9fff]{1,4})，([\u4e00-\u9fff]{1,2})([。，！？：；在了着过到上下进出])')
         matches_cn = pattern_cn.findall(line)
         for subj, verb, suffix in matches_cn:
             common_verbs = ['说', '问', '答', '道', '喊', '叫', '笑', '哭', '点', '摇', '坐', '站', '走', '跑', '看', '听', '想', '知', '穿', '戴', '拿', '放', '开', '关']
             if verb in common_verbs or (verb + suffix) in ['点头', '摇头', '说道', '问道', '答道', '坐在', '站在', '走了', '跑了', '看着', '听着', '想着']:
-                issues.append({
-                    'type': '主语动词逗号',
-                    'line': line_num,
-                    'content': f"{subj}，{verb}{suffix}",
-                    'suggestion': f"{subj}{verb}{suffix}"
-                })
-
-        # 模式2：英文名（首字母大写，2-15字母）+ 逗号 + 中文动词（1-3字）+ (标点 | 在/了/着/过)
+                issues.append({'type': '主语动词逗号', 'line': line_num, 'content': f"{subj}，{verb}{suffix}", 'suggestion': f"{subj}{verb}{suffix}"})
         pattern_en = re.compile(r'([A-Z][a-zA-Z]{1,14})，([\u4e00-\u9fff]{1,3})([。，！？：；在了着过到上下进出])')
         matches_en = pattern_en.findall(line)
         for name, verb, suffix in matches_en:
-            issues.append({
-                'type': '英文名主语逗号',
-                'line': line_num,
-                'content': f"{name}，{verb}{suffix}",
-                'suggestion': f"{name}{verb}{suffix}"
-            })
+            issues.append({'type': '英文名主语逗号', 'line': line_num, 'content': f"{name}，{verb}{suffix}", 'suggestion': f"{name}{verb}{suffix}"})
     return issues
 
 
@@ -50,44 +62,28 @@ def detect_fragment_sentences(text):
         line = line.strip()
         if not line:
             continue
-        comma_count = line.count('，')
-        # 超过3个逗号且长度小于50字符，很可能是碎片句
-        if comma_count >= 3 and len(line) < 50:
-            issues.append({
-                'type': '碎片句',
-                'line': line_num,
-                'content': line,
-                'comma_count': comma_count,
-                'suggestion': '合并为完整句子，减少不必要的逗号停顿'
-            })
+        if line.count('，') >= 3 and len(line) < 50:
+            issues.append({'type': '碎片句', 'line': line_num, 'content': line, 'suggestion': '合并为完整句子，减少不必要的逗号停顿'})
     return issues
 
 
 def detect_dialogue_tag_comma(text):
-    """检测对话标签中的逗号错误（如'"XX，说："'）"""
+    """检测对话标签中的逗号错误"""
     issues = []
-    # 匹配引号结束 + 1-4个汉字 + 逗号 + 说/道/问/答 + 冒号
     pattern = re.compile(r'[”"]([\u4e00-\u9fff]{1,4})，([说道问回答喊叫])([：，])')
     lines = text.split('\n')
     for line_num, line in enumerate(lines, 1):
-        matches = pattern.findall(line)
-        for name, verb, punct in matches:
-            issues.append({
-                'type': '对话标签逗号',
-                'line': line_num,
-                'content': f'"{name}，{verb}{punct}',
-                'suggestion': f'"{name}{verb}{punct}'
-            })
+        for name, verb, punct in pattern.findall(line):
+            issues.append({'type': '对话标签逗号', 'line': line_num, 'content': f'"{name}，{verb}{punct}', 'suggestion': f'"{name}{verb}{punct}'})
     return issues
 
 
 def detect_excessive_empty_lines(text):
-    """检测空行密度过高（连续2个以上空行，即段落之间有多个空白行）"""
+    """检测空行密度过高"""
     issues = []
     lines = text.split('\n')
     empty_run = 0
     run_start = 0
-
     for i, line in enumerate(lines):
         if line.strip() == '':
             if empty_run == 0:
@@ -95,94 +91,30 @@ def detect_excessive_empty_lines(text):
             empty_run += 1
         else:
             if empty_run >= 2:
-                issues.append({
-                    'type': '连续空行',
-                    'line': run_start,
-                    'content': f"第{run_start}-{run_start + empty_run - 1}行连续{empty_run}个空行",
-                    'suggestion': '段落之间最多保留1个空行，删除多余空行'
-                })
+                issues.append({'type': '连续空行', 'line': run_start, 'content': f"第{run_start}-{run_start + empty_run - 1}行连续{empty_run}个空行", 'suggestion': '段落之间最多保留1个空行'})
             empty_run = 0
-
-    # 检查末尾
     if empty_run >= 2:
-        issues.append({
-            'type': '连续空行',
-            'line': run_start,
-            'content': f"第{run_start}行至末尾连续{empty_run}个空行",
-            'suggestion': '删除末尾多余空行'
-        })
-
-    # 统计空行占比
+        issues.append({'type': '连续空行', 'line': run_start, 'content': f"第{run_start}行至末尾连续{empty_run}个空行", 'suggestion': '删除末尾多余空行'})
     total_lines = len(lines)
     empty_lines = sum(1 for l in lines if l.strip() == '')
     if total_lines > 0 and empty_lines / total_lines > 0.4:
-        issues.append({
-            'type': '空行占比过高',
-            'line': '全文',
-            'content': f"空行占比 {empty_lines/total_lines*100:.1f}%（{empty_lines}/{total_lines}行），超过40%阈值",
-            'suggestion': '大量空行属于注水行为，请合并段落、删除多余空行'
-        })
-
+        issues.append({'type': '空行占比过高', 'line': '全文', 'content': f"空行占比 {empty_lines/total_lines*100:.1f}%，超过40%阈值", 'suggestion': '大量空行属于注水行为'})
     return issues
 
 
 def detect_repeated_sentence_starts(text):
     """检测连续相同句式开头"""
     issues = []
-    # 按句号、问号、感叹号分割句子
-    sentences = re.split(r'[。！？]', text)
-    sentences = [s.strip() for s in sentences if s.strip()]
-
+    sentences = [s.strip() for s in re.split(r'[。！？]', text) if s.strip()]
     for i in range(len(sentences) - 5):
         window = sentences[i:i+7]
-        # 取每句前3个字符
         starts = [s[:3] for s in window if len(s) >= 3]
         if len(starts) < 5:
             continue
-        # 如果前3字符的去重数量 <= 2，说明句式高度重复
         counter = Counter(starts)
         if len(counter) <= 2:
             most_common = counter.most_common(1)[0]
-            issues.append({
-                'type': '连续相同句式',
-                'position': f'第{i+1}句附近',
-                'content': f'连续7句中有{most_common[1]}句以"{most_common[0]}"开头',
-                'suggestion': '变化句式开头，避免机械重复'
-            })
-    return issues
-
-
-def detect_excessive_short_paragraphs(text):
-    """检测过多过短段落（连续10段以上每段只有1句话）"""
-    issues = []
-    paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
-
-    short_run = 0
-    run_start = 0
-    for i, p in enumerate(paragraphs):
-        sentence_count = len(re.findall(r'[。！？]', p))
-        if sentence_count <= 1 and len(p) < 30:
-            if short_run == 0:
-                run_start = i
-            short_run += 1
-        else:
-            if short_run >= 8:
-                issues.append({
-                    'type': '过短段落密集',
-                    'position': f'第{run_start+1}段至第{i}段',
-                    'content': f'连续{short_run}段每段只有1句话且长度不足30字',
-                    'suggestion': '合并相关段落，增加段落长度变化'
-                })
-            short_run = 0
-
-    if short_run >= 8:
-        issues.append({
-            'type': '过短段落密集',
-            'position': f'第{run_start+1}段至末尾',
-            'content': f'连续{short_run}段每段只有1句话且长度不足30字',
-            'suggestion': '合并相关段落，增加段落长度变化'
-        })
-
+            issues.append({'type': '连续相同句式', 'position': f'第{i+1}句附近', 'content': f'连续7句中有{most_common[1]}句以"{most_common[0]}"开头', 'suggestion': '变化句式开头'})
     return issues
 
 
@@ -196,96 +128,384 @@ def verify_timeline(text):
     issues = []
     pattern = re.compile(r'时间[：:]\s*(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2})[：:](\d{2})')
     matches = pattern.findall(text)
-
     timestamps = []
     for m in matches:
-        year, month, day, hour, minute = map(int, m)
-        timestamps.append((year, month, day, hour, minute))
-
+        timestamps.append(tuple(map(int, m)))
     for i in range(1, len(timestamps)):
         if timestamps[i] <= timestamps[i-1]:
-            issues.append({
-                'type': '时间倒流',
-                'position': f'第{i+1}个时间戳',
-                'content': f'{timestamps[i]} 不大于前一个 {timestamps[i-1]}',
-                'suggestion': '调整时间顺序，确保严格递增'
-            })
-
+            issues.append({'type': '时间倒流', 'position': f'第{i+1}个时间戳', 'content': f'{timestamps[i]} 不大于前一个 {timestamps[i-1]}', 'suggestion': '调整时间顺序'})
     return issues
+
+
+# ============================================================
+# v4.2.0 新增：人物年龄-生日联动检测
+# ============================================================
+
+def parse_date(date_str):
+    """解析日期字符串"""
+    for fmt in ['%Y-%m-%d', '%Y年%m月%d日', '%Y/%m/%d']:
+        try:
+            return datetime.strptime(date_str, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def calc_age(birth_date, scene_date):
+    """计算在scene_date时的年龄（未到生日不增岁）"""
+    age = scene_date.year - birth_date.year
+    if (scene_date.month, scene_date.day) < (birth_date.month, birth_date.day):
+        age -= 1
+    return age
+
+
+def detect_age_birthday_mismatch(text, config):
+    """检测人物年龄未到生日误增岁（v4.2.0新增）
+    
+    需要config中包含characters配置，格式：
+    {"徐萱": {"birth": "2016-04-08"}}
+    """
+    issues = []
+    if not config or 'characters' not in config:
+        return issues
+    
+    characters = config['characters']
+    
+    # 提取所有场次的时间戳和对应的文本段
+    lines = text.split('\n')
+    current_scene_date = None
+    scene_start_line = 0
+    
+    for line_num, line in enumerate(lines, 1):
+        # 检测场次时间
+        time_match = re.match(r'时间[：:]\s*(\d{4})年(\d{1,2})月(\d{1,2})日', line.strip())
+        if time_match:
+            y, m, d = map(int, time_match.groups())
+            current_scene_date = date(y, m, d)
+            scene_start_line = line_num
+            continue
+        
+        if not current_scene_date:
+            continue
+        
+        # 检测正文中的年龄表述
+        for char_name, char_info in characters.items():
+            birth_str = char_info.get('birth', '')
+            birth_date = parse_date(birth_str)
+            if not birth_date:
+                continue
+            
+            correct_age = calc_age(birth_date, current_scene_date)
+            
+            # 匹配"X岁"或"X十八岁"等表述，且附近有人物名
+            age_patterns = [
+                rf'{char_name}[，。、：；""''（）\s]{{0,10}}(\d+)岁',
+                rf'(\d+)岁[，。、：；""''（）\s]{{0,10}}{char_name}',
+                rf'{char_name}.{{0,20}}?(\d+)岁',
+            ]
+            
+            for pattern in age_patterns:
+                for match in re.finditer(pattern, line):
+                    stated_age = int(match.group(1))
+                    if stated_age != correct_age and abs(stated_age - correct_age) <= 2:
+                        issues.append({
+                            'type': '年龄-生日不匹配',
+                            'line': line_num,
+                            'content': f"场次日期{current_scene_date}，{char_name}应为{correct_age}岁，文中写{stated_age}岁：{line.strip()[:80]}",
+                            'suggestion': f"改为{correct_age}岁（{char_name}生日{birth_str}，未到生日不增岁）"
+                        })
+    
+    return issues
+
+
+# ============================================================
+# v4.2.0 新增：相对时间表述检测
+# ============================================================
+
+def detect_relative_time_mismatch(text, config):
+    """检测相对时间表述与实际时间线矛盾（v4.2.0新增）
+    
+    需要config中包含key_events配置，格式：
+    {"逃亡": "2026-07-01", "回国": "2033-11-01"}
+    """
+    issues = []
+    if not config or 'key_events' not in config:
+        return issues
+    
+    key_events = config['key_events']
+    lines = text.split('\n')
+    current_scene_date = None
+    
+    for line_num, line in enumerate(lines, 1):
+        time_match = re.match(r'时间[：:]\s*(\d{4})年(\d{1,2})月(\d{1,2})日', line.strip())
+        if time_match:
+            y, m, d = map(int, time_match.groups())
+            current_scene_date = date(y, m, d)
+            continue
+        
+        if not current_scene_date:
+            continue
+        
+        # 检测"X岁时离开/回来/逃亡/失去"等表述
+        rel_pattern = re.compile(r'(\d+)岁(那年|时|的时候).{0,15}(离开|回来|走|逃亡|失去|去世|空难|车祸|发生)')
+        for match in rel_pattern.finditer(line):
+            stated_age = int(match.group(1))
+            event_word = match.group(3)
+            
+            # 尝试匹配关键事件
+            for event_name, event_date_str in key_events.items():
+                event_date = parse_date(event_date_str)
+                if not event_date:
+                    continue
+                
+                # 检查这个事件是否与文中描述的事件相关
+                if any(kw in event_word for kw in ['离开', '走', '逃亡']) and '逃亡' in event_name:
+                    # 需要人物出生日期来计算
+                    if config.get('characters'):
+                        for char_name, char_info in config['characters'].items():
+                            birth_date = parse_date(char_info.get('birth', ''))
+                            if birth_date:
+                                correct_age = calc_age(birth_date, event_date)
+                                if stated_age != correct_age and abs(stated_age - correct_age) <= 5:
+                                    issues.append({
+                                        'type': '相对时间表述错误',
+                                        'line': line_num,
+                                        'content': f"文中写'{stated_age}岁时{event_word}'，但{event_name}发生在{event_date}，{char_name}当时应为{correct_age}岁：{line.strip()[:80]}",
+                                        'suggestion': f"改为{correct_age}岁"
+                                    })
+    
+    return issues
+
+
+# ============================================================
+# v4.2.0 新增：人物年龄对比检测
+# ============================================================
+
+def detect_age_comparison_mismatch(text, config):
+    """检测人物年龄对比写反（v4.2.0新增）
+    
+    需要config中包含characters配置（含birth字段）
+    """
+    issues = []
+    if not config or 'characters' not in config:
+        return issues
+    
+    characters = config['characters']
+    char_names = list(characters.keys())
+    
+    if len(char_names) < 2:
+        return issues
+    
+    lines = text.split('\n')
+    
+    # 生成所有人物对的年龄差
+    age_diffs = {}
+    for i, name1 in enumerate(char_names):
+        for name2 in char_names[i+1:]:
+            b1 = parse_date(characters[name1].get('birth', ''))
+            b2 = parse_date(characters[name2].get('birth', ''))
+            if b1 and b2:
+                diff_days = (b2 - b1).days
+                diff_months = round(diff_days / 30.44)
+                age_diffs[(name1, name2)] = diff_months  # name1比name2大diff_months个月
+    
+    for line_num, line in enumerate(lines, 1):
+        # 匹配"A比B大/小X个月/岁"
+        comp_pattern = re.compile(r'([\u4e00-\u9fff]{2,4})比([\u4e00-\u9fff]{2,4})(大|小)(\d+)(个月|岁)')
+        for match in comp_pattern.finditer(line):
+            name1, name2, direction, num, unit = match.groups()
+            num = int(num)
+            
+            if name1 in characters and name2 in characters:
+                key = (name1, name2) if (name1, name2) in age_diffs else (name2, name1)
+                if key in age_diffs:
+                    actual_diff = abs(age_diffs[key])
+                    actual_direction = '大' if age_diffs[key] > 0 else '小'
+                    actual_older = key[0] if age_diffs[key] > 0 else key[1]
+                    
+                    if direction != actual_direction or num != actual_diff:
+                        issues.append({
+                            'type': '年龄对比错误',
+                            'line': line_num,
+                            'content': f"文中写'{name1}比{name2}{direction}{num}{unit}'，实际{actual_older}更大，相差{actual_diff}个月：{line.strip()[:80]}",
+                            'suggestion': f"改为'{actual_older}比{key[1] if actual_older == key[0] else key[0]}大{actual_diff}个月'"
+                        })
+    
+    return issues
+
+
+# ============================================================
+# v4.2.0 新增：同班同学年级一致性检测
+# ============================================================
+
+def detect_classmate_grade_mismatch(text, config):
+    """检测同班同学年级不一致（v4.2.0新增）
+    
+    需要config中包含classmates配置，格式：
+    ["苏晚", "郑好", "周鼎思"]
+    以及characters中的grade字段
+    """
+    issues = []
+    if not config or 'classmates' not in config or 'characters' not in config:
+        return issues
+    
+    classmates = config['classmates']
+    characters = config['characters']
+    
+    # 收集每个同学在文中出现的年级表述
+    grade_mentions = {}
+    lines = text.split('\n')
+    
+    grade_pattern = re.compile(r'(高一|高二|高三|大一|大二|大三|大四|初一|初二|初三)')
+    
+    for line_num, line in enumerate(lines, 1):
+        for classmate in classmates:
+            if classmate in line:
+                for match in grade_pattern.finditer(line):
+                    grade = match.group(1)
+                    if classmate not in grade_mentions:
+                        grade_mentions[classmate] = set()
+                    grade_mentions[classmate].add((grade, line_num, line.strip()[:60]))
+    
+    # 检查是否有同学出现了不同的年级
+    all_grades = set()
+    for classmate, mentions in grade_mentions.items():
+        for grade, _, _ in mentions:
+            all_grades.add(grade)
+    
+    if len(all_grades) > 1:
+        issues.append({
+            'type': '同班同学年级不一致',
+            'line': '全文',
+            'content': f"同班同学出现了不同年级：{all_grades}。详情：" + 
+                       "; ".join([f"{name}: {[g for g,_,_ in mentions]}" for name, mentions in grade_mentions.items()]),
+            'suggestion': '同班同学默认同年级，如有人跳级/留级需在剧情中明确说明'
+        })
+    
+    return issues
+
+
+# ============================================================
+# 主函数
+# ============================================================
+
+def load_config(config_path):
+    """加载配置文件"""
+    if not config_path or not os.path.exists(config_path):
+        return None
+    with open(config_path, 'r', encoding='utf-8') as f:
+        return json.load(f)
 
 
 def main():
     if len(sys.argv) < 2:
-        print("用法: python degradation_detector.py <文件路径>")
+        print("用法: python degradation_detector.py <文件路径> [--config <配置文件.json>]")
         sys.exit(1)
-
+    
     file_path = sys.argv[1]
+    config = None
+    
+    if '--config' in sys.argv:
+        idx = sys.argv.index('--config')
+        if idx + 1 < len(sys.argv):
+            config = load_config(sys.argv[idx + 1])
+    
     with open(file_path, 'r', encoding='utf-8') as f:
         text = f.read()
-
+    
     print("=" * 60)
-    print("长文本退化模式检测报告 v1.1.0")
+    print("长文本退化模式检测报告 v4.2.0")
     print("=" * 60)
     print(f"文件: {file_path}")
     print(f"总行数: {len(text.split(chr(10)))}")
     print(f"总字符数: {len(text)}")
     print(f"中文字符数: {count_chinese_chars(text)}")
+    if config:
+        print(f"配置文件: 已加载（{len(config.get('characters', {}))}个人物，{len(config.get('key_events', {}))}个关键事件，{len(config.get('classmates', []))}个同学）")
     print()
-
+    
     all_issues = []
-
-    print("【1/7】主语动词逗号检测（含英文名）...")
+    test_num = 0
+    total_tests = 11 if config else 7
+    
+    test_num += 1
+    print(f"【{test_num}/{total_tests}】主语动词逗号检测（含英文名）...")
     issues = detect_subject_verb_comma(text)
     print(f"  发现 {len(issues)} 处问题")
     all_issues.extend(issues)
-
-    print("【2/7】碎片句检测...")
+    
+    test_num += 1
+    print(f"【{test_num}/{total_tests}】碎片句检测...")
     issues = detect_fragment_sentences(text)
     print(f"  发现 {len(issues)} 处问题")
     all_issues.extend(issues)
-
-    print("【3/7】对话标签逗号检测...")
+    
+    test_num += 1
+    print(f"【{test_num}/{total_tests}】对话标签逗号检测...")
     issues = detect_dialogue_tag_comma(text)
     print(f"  发现 {len(issues)} 处问题")
     all_issues.extend(issues)
-
-    print("【4/7】空行密度检测...")
+    
+    test_num += 1
+    print(f"【{test_num}/{total_tests}】空行密度检测...")
     issues = detect_excessive_empty_lines(text)
     print(f"  发现 {len(issues)} 处问题")
     all_issues.extend(issues)
-
-    print("【5/7】连续相同句式检测...")
+    
+    test_num += 1
+    print(f"【{test_num}/{total_tests}】连续相同句式检测...")
     issues = detect_repeated_sentence_starts(text)
     print(f"  发现 {len(issues)} 处问题")
     all_issues.extend(issues)
-
-    print("【6/7】过短段落密集检测...")
-    issues = detect_excessive_short_paragraphs(text)
-    print(f"  发现 {len(issues)} 处问题")
-    all_issues.extend(issues)
-
-    print("【7/7】时间线递增检测...")
+    
+    test_num += 1
+    print(f"【{test_num}/{total_tests}】时间线递增检测...")
     issues = verify_timeline(text)
     print(f"  发现 {len(issues)} 处问题")
     all_issues.extend(issues)
-
+    
+    if config:
+        test_num += 1
+        print(f"【{test_num}/{total_tests}】人物年龄-生日联动检测（v4.2.0）...")
+        issues = detect_age_birthday_mismatch(text, config)
+        print(f"  发现 {len(issues)} 处问题")
+        all_issues.extend(issues)
+        
+        test_num += 1
+        print(f"【{test_num}/{total_tests}】相对时间表述检测（v4.2.0）...")
+        issues = detect_relative_time_mismatch(text, config)
+        print(f"  发现 {len(issues)} 处问题")
+        all_issues.extend(issues)
+        
+        test_num += 1
+        print(f"【{test_num}/{total_tests}】人物年龄对比检测（v4.2.0）...")
+        issues = detect_age_comparison_mismatch(text, config)
+        print(f"  发现 {len(issues)} 处问题")
+        all_issues.extend(issues)
+        
+        test_num += 1
+        print(f"【{test_num}/{total_tests}】同班同学年级一致性检测（v4.2.0）...")
+        issues = detect_classmate_grade_mismatch(text, config)
+        print(f"  发现 {len(issues)} 处问题")
+        all_issues.extend(issues)
+    
     print()
     print("=" * 60)
-
+    
     if all_issues:
-        print(f"检测完成：共发现 {len(all_issues)} 处退化问题")
+        print(f"检测完成：共发现 {len(all_issues)} 处问题")
         print()
-        print("问题详情（前30条）：")
+        print("问题详情（前40条）：")
         print("-" * 60)
-        for i, issue in enumerate(all_issues[:30], 1):
+        for i, issue in enumerate(all_issues[:40], 1):
             print(f"{i}. [{issue['type']}] 位置: {issue.get('line', issue.get('position', '未知'))}")
             print(f"   内容: {issue.get('content', '')}")
             print(f"   建议: {issue.get('suggestion', '')}")
             print()
-
-        if len(all_issues) > 30:
-            print(f"... 还有 {len(all_issues) - 30} 处问题未显示")
-
+        
+        if len(all_issues) > 40:
+            print(f"... 还有 {len(all_issues) - 40} 处问题未显示")
+        
         print()
         print("结论：未通过质量检测，请修改后重新检测。")
         sys.exit(1)

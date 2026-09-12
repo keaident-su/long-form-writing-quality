@@ -1,0 +1,47 @@
+{
+  "_comment": "long-form-writing-quality v4.2.0 检测配置示例。将此文件与剧本文本一起使用：python degradation_detector.py your_script.txt --config example_config.json",
+
+  "characters": {
+    "徐萱": {
+      "birth": "2016-04-08",
+      "grade": "高三",
+      "note": "主角，男孩，声线细软。2026年1月父母空难（9岁），2026年4月其他亲人车祸（10岁），2026年7月逃亡（10岁），2033年11月回国（17岁）"
+    },
+    "苏晚": {
+      "birth": "2016-08-15",
+      "grade": "高三",
+      "note": "主角好友，女孩，短马尾。与徐萱同班同年级"
+    },
+    "郑好": {
+      "birth": "2016-06-20",
+      "grade": "高三",
+      "note": "主角小学同学，与苏晚一届"
+    },
+    "徐静": {
+      "birth": "2001-03-10",
+      "grade": null,
+      "note": "主角姑姑，2026年时25岁"
+    }
+  },
+
+  "key_events": {
+    "父母空难": "2026-01-15",
+    "其他亲人车祸": "2026-04-05",
+    "逃亡": "2026-07-01",
+    "回国": "2033-11-01",
+    "自首": "2033-10-15"
+  },
+
+  "classmates": [
+    "苏晚",
+    "郑好",
+    "周鼎思"
+  ],
+
+  "_usage": {
+    "detect_age_birthday_mismatch": "根据characters.birth和场次头时间，检测正文中人物年龄是否与出生日期匹配（未到生日不增岁）",
+    "detect_relative_time_mismatch": "检测'X岁时离开/回来/失去亲人'等相对时间表述是否与key_events和人物出生日期一致",
+    "detect_age_comparison_mismatch": "检测'A比B大/小X个月'是否与两人出生日期一致，防止写反",
+    "detect_classmate_grade_mismatch": "检测classmates列表中的同学是否出现了不同的年级表述"
+  }
+}
