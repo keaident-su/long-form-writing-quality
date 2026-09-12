@@ -826,12 +826,12 @@ def verify_format_and_supplement(text):
         if m_main and not m_supp:
             if cur_title:
                 scenes.append({'title':cur_title,'content':'\n'.join(cur_content),
-                               'time':cur_time,'is_supp':False,'supp_ord':0})
+                               'time':cur_time,'is_supp':cur_is_supp,'supp_ord':cur_supp_ord})
             cur_title = s; cur_content=[line]; cur_time=None; cur_is_supp=False; cur_supp_ord=0
         elif m_supp:
             if cur_title:
                 scenes.append({'title':cur_title,'content':'\n'.join(cur_content),
-                               'time':cur_time,'is_supp':True,'supp_ord':cur_supp_ord})
+                               'time':cur_time,'is_supp':cur_is_supp,'supp_ord':cur_supp_ord})
             cur_title = s; cur_content=[line]; cur_time=None; cur_is_supp=True
             cur_supp_ord = cn_supp.get(m_supp.group(2), 0)
         else:
@@ -1183,3 +1183,23 @@ A：如果设定人物提前毕业或跳级，必须：
 3. 后续所有年级表述都要按调整后的时间线计算
 4. 集数标注和时间线中要能看出学制的变化
 例如主角2028年4月入大一，2030年3月提前本科毕业（2年修完4年学分），2030年4月入硕士，2032年3月硕士毕业——这个时间线必须在剧情中明确交代。
+
+
+## 更新日志
+
+### v4.1.0
+- 新增**场次四字段完整性检测**：每场必须含"大纲锚点（作者口径）""时间：""地点：""出场人物：/人物："，字段名照抄不得改写。
+- 新增**集头三字段完整性检测**：每集必须含集标题（推荐"第二季·第X集《集名》"，兼容旧格式）、"本集概要（按作者更正口径）"、"本集场次（第X场—第Y场）"。
+- 新增**日本9月"新学期"误写硬规则**：日本新学年在4月，9月是前期末/暑假结束，只能写"暑假结束""前期最后阶段""後期即将开始"；命中"新学期/新学年/开学"即报错。
+- 增强**补充场位置检测**：补充场紧跟同号主场次、（一）（二）序号连续不重号、时间戳夹在主场次与下一主场次之间。
+- **修复** `verify_format_and_supplement()` 解析器 bug：关闭旧场次时原先硬编码 `is_supp=False/True`，导致主场次被误标为补充场、脚本在真实文档上抛 `AttributeError`；改为统一使用 `cur_is_supp`/`cur_supp_ord`。
+- 新增检测脚本 `verify_format_and_supplement()`，并同步工作流闸门（第16—18条）与准出条件（第17—20条）。
+
+### v4.0.0
+- 新增集数标注完整性检测、集数编号连续性校验、跨文档衔接检查。
+- 新增日本学制校验（4月入学/3月毕业、本科4年/修士2年）。
+- 新增人物年龄-年级对应检测（未到生日不增岁、按入学年份推算年级）。
+
+### v3.0.0
+- 新增剧情逻辑连贯性检测：星期几自动校验、主场次与补充场内容重复检测、相邻场次情节相似度检测、人物名字冲突检测。
+- 新增全局人物表与全局剧情一致性检查表。
