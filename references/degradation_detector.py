@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 长文本退化模式检测器 v4.2.0
@@ -397,6 +397,149 @@ def load_config(config_path):
         return json.load(f)
 
 
+
+# ============================================================
+# v4.3.0 新增：模板化重复场次检测
+# ============================================================
+
+def detect_template_repeated_scenes(text):
+    """检测模板化重复场次（v4.3.0新增）
+    
+    检测同一类情节被拆成多场换汤不换药的模板。
+    例如连续多场都是"他帮XX做了个XX事"的同一结构。
+    """
+    issues = []
+    
+    # 提取所有场次的标题和前几句
+    scene_pattern = re.compile(r'第(\d+)场\s+(.+)')
+    scenes = []
+    current_scene = None
+    current_lines = []
+    
+    for line in text.split('\n'):
+        m = scene_pattern.match(line.strip())
+        if m:
+            if current_scene:
+                scenes.append({'num': current_scene, 'title': current_title, 'lines': current_lines})
+            current_scene = int(m.group(1))
+            current_title = m.group(2)
+            current_lines = []
+        elif current_scene:
+            current_lines.append(line.strip())
+            if len(current_lines) > 10:
+                scenes.append({'num': current_scene, 'title': current_title, 'lines': current_lines})
+                current_scene = None
+                current_lines = []
+    
+    if current_scene:
+        scenes.append({'num': current_scene, 'title': current_title, 'lines': current_lines})
+    
+    # 检测"他帮XX做了个XX"模板
+    help_pattern = re.compile(r'他帮[^，。、]{2,10}(做了|开了|搞了|装了|弄了|建了)[^，。]{2,15}')
+    help_scenes = []
+    for s in scenes:
+        full_text = '\n'.join(s['lines'])
+        matches = help_pattern.findall(full_text)
+        if matches:
+            help_scenes.append({'scene': s['num'], 'title': s['title'], 'matches': matches})
+    
+    if len(help_scenes) >= 4:
+        # 收集所有匹配的动作类型
+        all_actions = []
+        for hs in help_scenes:
+            all_actions.extend(hs['matches'])
+        
+        # 如果有4场以上都是"他帮XX做了XX"，判定为模板化重复
+        issues.append({
+            'type': '模板化重复场次',
+            'position': f"第{help_scenes[0]['scene']}场至第{help_scenes[-1]['scene']}场",
+            'content': f"发现{len(help_scenes)}场'他帮XX做了XX'模板化情节，涉及：{[hs['title'] for hs in help_scenes[:5]]}",
+            'suggestion': f"同一类帮助他人情节最多保留2场有具体人物故事的，其余{len(help_scenes)-2}场必须合并或删除"
+        })
+    
+    # 检测"老人学XX"类模板
+    elder_pattern = re.compile(r'老人[^，。]{0,5}(学|教|会|弄)(视频|打车|挂号|交费|购物|拍照|发朋友圈|扫码|支付)')
+    elder_count = 0
+    elder_scenes = []
+    for s in scenes:
+        full_text = '\n'.join(s['lines'])
+        if elder_pattern.search(full_text):
+            elder_count += 1
+            elder_scenes.append(s['num'])
+    
+    if elder_count >= 4:
+        issues.append({
+            'type': '模板化重复-老人学XX',
+            'position': f"场次: {elder_scenes[:8]}",
+            'content': f"发现{elder_count}场'老人学XX'模板化情节",
+            'suggestion': "合并为1-2场有具体人物故事的戏，删除纯模板重复"
+        })
+    
+    return issues
+
+
+# ============================================================
+# v4.3.0 新增：同一情节线重复检测
+# ============================================================
+
+def detect_plotline_repeated(text):
+    """检测同一情节线重复写了多场（v4.3.0新增）
+    
+    检测关键情节关键词在多场中重复出现，且内容高度相似。
+    """
+    issues = []
+    
+    # 提取场次
+    scene_pattern = re.compile(r'第(\d+)场\s+(.+)')
+    scenes = []
+    current_scene = None
+    current_title = ''
+    current_text = []
+    
+    for line in text.split('\n'):
+        m = scene_pattern.match(line.strip())
+        if m:
+            if current_scene:
+                scenes.append({'num': current_scene, 'title': current_title, 'text': '\n'.join(current_text)})
+            current_scene = int(m.group(1))
+            current_title = m.group(2)
+            current_text = []
+        elif current_scene:
+            current_text.append(line)
+    
+    if current_scene:
+        scenes.append({'num': current_scene, 'title': current_title, 'text': '\n'.join(current_text)})
+    
+    # 常见关键情节关键词
+    plot_keywords = {
+        '板车': ['板车', '拖车', '运输车上路'],
+        'NAS': ['NAS', '存储服务器', '硬盘阵列'],
+        '宣判': ['宣判', '判决', '法庭宣判'],
+        '导弹': ['导弹', '第二枚', '拦截弹'],
+        '安全门被撬': ['安全门', '撬门', '门被撬'],
+        '飞机接地': ['接地', '降落', '触地'],
+        '武警查验': ['武警', '查验', '检查站'],
+        '带话': ['带话', '传话', '捎话'],
+    }
+    
+    for plot_name, keywords in plot_keywords.items():
+        matching_scenes = []
+        for s in scenes:
+            for kw in keywords:
+                if kw in s['text']:
+                    matching_scenes.append(s['num'])
+                    break
+        
+        if len(matching_scenes) >= 3:
+            issues.append({
+                'type': f'情节线重复-{plot_name}',
+                'position': f"场次: {matching_scenes[:8]}",
+                'content': f"'{plot_name}'情节线在{len(matching_scenes)}场中出现",
+                'suggestion': f"每个关键情节节点只写1场，多余的{len(matching_scenes)-1}场必须合并或删除"
+            })
+    
+    return issues
+
 def main():
     if len(sys.argv) < 2:
         print("用法: python degradation_detector.py <文件路径> [--config <配置文件.json>]")
@@ -414,7 +557,7 @@ def main():
         text = f.read()
     
     print("=" * 60)
-    print("长文本退化模式检测报告 v4.2.0")
+    print("长文本退化模式检测报告 v4.3.0")
     print("=" * 60)
     print(f"文件: {file_path}")
     print(f"总行数: {len(text.split(chr(10)))}")
@@ -426,7 +569,7 @@ def main():
     
     all_issues = []
     test_num = 0
-    total_tests = 11 if config else 7
+    total_tests = 13
     
     test_num += 1
     print(f"【{test_num}/{total_tests}】主语动词逗号检测（含英文名）...")
