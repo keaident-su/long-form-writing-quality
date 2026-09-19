@@ -68,6 +68,17 @@ long-form-writing-quality/
 - 超过 5000 字的报告、白皮书、技术文档
 - 任何需要大模型连续生成大量文本的场景
 
+### ⚠️ 技能冲突注意事项
+
+**生成长文本时，不要同时加载以下技能，否则会互相干扰导致退化：**
+
+| 技能 | 风险等级 | 冲突原因 | 正确用法 |
+|------|----------|----------|----------|
+| **humanizer-zh** | 🔴 高 | "变化节奏/允许混乱/两项优于三项"与本Skill的"逻辑严密/时间线递增/结构完整"直接冲突 | 生成完成后再单独加载做润色，不要在生成时同时加载 |
+| **character-profile** | 🟡 低 | 同时调用"生成人物小传"会让每场变成人物小传流水账 | 只在需要人物分析时单独使用，不要在写剧本时同时调用 |
+| **coverage-report** | 🟡 低 | 同时调用"写审稿报告"会让剧情变成优缺点分析 | 只在剧本完成后单独使用做评价 |
+| **lark-doc** | 🟢 无 | 文档操作工具，不影响内容质量 | 正常使用即可 |
+
 ---
 
 ## English
@@ -131,6 +142,17 @@ long-form-writing-quality/
 - Batch generation of novels, scripts, screenplays
 - Reports, whitepapers, technical docs over 5000 words
 - Any scenario requiring an LLM to generate large volumes of continuous text
+
+### ⚠️ Skill Conflict Notes
+
+**When generating long text, do NOT load the following skills simultaneously — they interfere and cause degradation:**
+
+| Skill | Risk Level | Conflict Reason | Correct Usage |
+|-------|-----------|-----------------|---------------|
+| **humanizer-zh** | 🔴 High | "Vary rhythm / allow mess / two beats over three" directly conflicts with this Skill's "strict logic / monotonic timeline / complete structure" | Use separately AFTER generation for polishing, not during generation |
+| **character-profile** | 🟡 Low | Simultaneous "generate character profile" calls turn every scene into character-profile boilerplate | Use separately only when character analysis is needed |
+| **coverage-report** | 🟡 Low | Simultaneous "write coverage report" calls turn story into pros/cons analysis | Use separately only after script completion for evaluation |
+| **lark-doc** | 🟢 None | Document operation tool, no impact on content quality | Safe to use normally |
 
 ---
 
