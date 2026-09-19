@@ -540,6 +540,137 @@ def detect_plotline_repeated(text):
     
     return issues
 
+
+# ============================================================
+# v4.4.0 新增：同一人物送别情节重复检测
+# ============================================================
+
+def detect_repeated_farewells(text):
+    """检测同一人物的送别/告别情节被写了多次（v4.4.0新增）"""
+    issues = []
+    
+    # 提取场次
+    scene_pattern = re.compile(r'第(\d+)场\s+(.+)')
+    scenes = []
+    current_scene = None
+    current_title = ''
+    current_text = []
+    
+    for line in text.split('\n'):
+        m = scene_pattern.match(line.strip())
+        if m:
+            if current_scene:
+                scenes.append({'num': current_scene, 'title': current_title, 'text': '\n'.join(current_text)})
+            current_scene = int(m.group(1))
+            current_title = m.group(2)
+            current_text = []
+        elif current_scene:
+            current_text.append(line)
+    
+    if current_scene:
+        scenes.append({'num': current_scene, 'title': current_title, 'text': '\n'.join(current_text)})
+    
+    # 检测"机场送别"模式
+    farewell_keywords = ['机场', '候机', '登机', '送别', '送行', '拥抱', '挥手', '安检口', '检票口', '起飞']
+    farewell_scenes = []
+    for s in scenes:
+        match_count = sum(1 for kw in farewell_keywords if kw in s['text'])
+        if match_count >= 3:
+            farewell_scenes.append({'scene': s['num'], 'title': s['title'], 'match_count': match_count})
+    
+    if len(farewell_scenes) >= 3:
+        issues.append({
+            'type': '同一人物送别重复',
+            'position': f"场次: {[fs['scene'] for fs in farewell_scenes]}",
+            'content': f"发现{len(farewell_scenes)}场机场送别情节",
+            'suggestion': "同一人物的送别只写1场，多余的必须合并或改写为其他情节（如911飙车等）"
+        })
+    
+    return issues
+
+
+# ============================================================
+# v4.4.0 新增：主场次与补充场人物去向矛盾检测
+# ============================================================
+
+def detect_departure_timeline_conflict(text):
+    """检测主场次说人物已离开，补充场又写送别的矛盾（v4.4.0新增）"""
+    issues = []
+    
+    # 提取场次和时间
+    scene_pattern = re.compile(r'第(\d+)场.*?补充场|第(\d+)场\s')
+    time_pattern = re.compile(r'时间[：:]\s*(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2})[：:](\d{2})')
+    
+    scenes = []
+    current_num = None
+    current_is_supp = False
+    current_time = None
+    current_text = []
+    
+    for line in text.split('\n'):
+        line_stripped = line.strip()
+        
+        # 检测补充场
+        supp_match = re.match(r'^第(\d+)场补充场', line_stripped)
+        main_match = re.match(r'^第(\d+)场\s+(.+)', line_stripped)
+        
+        if supp_match:
+            if current_num:
+                scenes.append({'num': current_num, 'is_supp': current_is_supp, 'time': current_time, 'text': '\n'.join(current_text)})
+            current_num = int(supp_match.group(1))
+            current_is_supp = True
+            current_time = None
+            current_text = []
+        elif main_match:
+            if current_num:
+                scenes.append({'num': current_num, 'is_supp': current_is_supp, 'time': current_time, 'text': '\n'.join(current_text)})
+            current_num = int(main_match.group(1))
+            current_is_supp = False
+            current_time = None
+            current_text = []
+        
+        tm = time_pattern.match(line_stripped)
+        if tm:
+            y, m, d, h, mi = map(int, tm.groups())
+            current_time = (y, m, d, h, mi)
+        
+        current_text.append(line)
+    
+    if current_num:
+        scenes.append({'num': current_num, 'is_supp': current_is_supp, 'time': current_time, 'text': '\n'.join(current_text)})
+    
+    # 检测：主场次说"已离开/已起飞"，补充场时间更晚却又写"送别/登机"
+    for i, s in enumerate(scenes):
+        if not s['is_supp'] or not s['time']:
+            continue
+        
+        # 找同号主场次
+        main_scene = None
+        for ms in scenes:
+            if ms['num'] == s['num'] and not ms['is_supp']:
+                main_scene = ms
+                break
+        
+        if not main_scene or not main_scene['time']:
+            continue
+        
+        # 如果补充场时间比主场次晚
+        if s['time'] > main_scene['time']:
+            # 检查主场次是否说人物已离开
+            main_left = any(kw in main_scene['text'] for kw in ['已离开', '已走', '已起飞', '登机了', '走了', '离开了'])
+            # 检查补充场是否又写送别
+            supp_farewell = any(kw in s['text'] for kw in ['送她', '送他', '送别', '机场', '登机', '安检口', '晚上九点', '航班'])
+            
+            if main_left and supp_farewell:
+                issues.append({
+                    'type': '人物去向时间矛盾',
+                    'position': f"第{s['num']}场 vs 第{s['num']}场补充场",
+                    'content': f"主场次({main_scene['time']})写人物已离开，补充场({s['time']})又写送别/登机",
+                    'suggestion': "补充场不得重复送别，应改写为其他情节或调整时间"
+                })
+    
+    return issues
+
 def main():
     if len(sys.argv) < 2:
         print("用法: python degradation_detector.py <文件路径> [--config <配置文件.json>]")
@@ -557,7 +688,7 @@ def main():
         text = f.read()
     
     print("=" * 60)
-    print("长文本退化模式检测报告 v4.3.0")
+    print("长文本退化模式检测报告 v4.4.0")
     print("=" * 60)
     print(f"文件: {file_path}")
     print(f"总行数: {len(text.split(chr(10)))}")
@@ -569,7 +700,7 @@ def main():
     
     all_issues = []
     test_num = 0
-    total_tests = 13
+    total_tests = 15
     
     test_num += 1
     print(f"【{test_num}/{total_tests}】主语动词逗号检测（含英文名）...")
