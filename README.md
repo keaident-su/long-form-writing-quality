@@ -31,6 +31,25 @@
 3. **每批质量检查**：8 项检查闸门，不通过则重写该批
 4. **合并与最终验证**：全量退化扫描 + 字数验证 + 时间线检查 + 空行密度检查 + 通读修改
 
+### 工程化防退化体系（v5.0.0）
+
+**核心问题**：长文本生成时，模型写到后面就忘了前面——不是模型"笨"，是单次上下文装不下全部已写内容。
+
+**解决方案**：不靠记忆，靠工程化手段兜住。
+
+| 措施 | 做什么 | 为什么 |
+|------|--------|--------|
+| **全局状态基线表** | 开工前先落盘5张表（场次编号/人物位置/车辆可用性/关键情节节点/集数编号） | 不写完表格不许写正文，所有状态都有机器可校验的基线 |
+| **每批强制自动校验** | 每批写完跑脚本，脚本不过就不交付 | 不靠人眼抽查，靠脚本自动拦截时间线倒流、场次错乱、车辆不可用等问题 |
+| **补充场时间戳硬规则** | 补充场时间必须在主场次之后、下一场之前，且必须提供新信息 | 防止补充场时间戳倒流、内容重复 |
+| **交付前全量扫描** | 交付前跑全量脚本，核对所有相对时间、车辆可用性、"第一次"类表述、人物年龄 | 不靠人眼通读，靠脚本全量覆盖 |
+| **反馈修复闭环** | 收到反馈后先全量扫描列出所有同类问题，一次性修完，再跑校验 | 不是指出哪修哪，而是同类问题一次性解决 |
+
+**三句原则**：
+- 不靠记忆，靠状态
+- 不靠人眼，靠脚本
+- 不靠补丁，靠闭环
+
 ### 自动检测脚本
 
 ```bash
@@ -105,6 +124,25 @@ Typical degradation patterns:
 2. **Batch generation**: Each batch ≤ 4000 Chinese characters, following natural language rhythm
 3. **Per-batch quality gate**: 8 checks; rewrite the batch if any fails
 4. **Merge & final verification**: Full degradation scan + word count + timeline check + empty-line density + read-through
+
+### Engineering Anti-Degradation System (v5.0.0)
+
+**Core Problem**: When generating long text, the model forgets what it wrote earlier — not because it's "stupid", but because a single context window can't hold everything.
+
+**Solution**: Don't rely on memory; rely on engineering controls.
+
+| Measure | What It Does | Why |
+|---------|-------------|-----|
+| **Global State Baseline Tables** | Write 5 tables first (scene numbering / character locations / vehicle availability / key plot nodes / episode numbering) before writing any prose | No prose until tables are done; all states have machine-verifiable baselines |
+| **Mandatory Auto-Check Per Batch** | Run scripts after each batch; don't deliver if scripts fail | Don't rely on human spot-checks; scripts auto-catch timeline reversals, scene order errors, unavailable vehicles |
+| **Supplementary Scene Timestamp Rules** | Supplementary scene timestamps must be after the main scene and before the next main scene, and must add new information | Prevents timestamp reversal and content duplication |
+| **Pre-Delivery Full Scan** | Run full script before delivery: verify all relative time references, vehicle availability, "first time" claims, character ages | Don't rely on human read-through; scripts cover everything |
+| **Feedback Fix Loop** | After receiving feedback, scan the entire text for all similar issues, fix them all at once, then re-run checks | Don't fix one issue at a time; fix all issues of the same type in one pass |
+
+**Three Principles**:
+- Don't rely on memory; rely on state
+- Don't rely on human eyes; rely on scripts
+- Don't rely on patches; rely on a closed loop
 
 ### Auto-Detection Script
 
